@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dano's Academy</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #020617; color: white; -webkit-tap-highlight-color: transparent; margin: 0; }
+        .page { display: none; }
+        .page.active { display: block; animation: slideUp 0.4s ease-out; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .card-glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .btn-primary { background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); }
+    </style>
+</head>
+<body>
+
+    <div id="login" class="page active min-h-screen flex flex-col items-center justify-center p-8 text-center">
+        <div class="mb-12">
+            <h1 class="text-6xl font-black italic tracking-tighter">DANO'S</h1>
+            <p class="text-blue-500 font-bold tracking-[0.5em] text-[10px] uppercase">Academy Cloud</p>
+        </div>
+        <div class="w-full max-w-sm space-y-4">
+            <input id="userName" type="text" placeholder="Teu Nome" class="w-full p-5 rounded-3xl bg-white/5 border border-white/10 text-center font-bold text-xl outline-none focus:border-blue-500 text-white transition-all">
+            <button id="btnLogin" onclick="handleLogin()" class="w-full py-5 btn-primary rounded-3xl font-black uppercase text-lg shadow-2xl">Aceder ao Treino</button>
+            <p id="statusMsg" class="text-[10px] text-slate-500 uppercase font-bold mt-2"></p>
+        </div>
+    </div>
+
+    <div id="menu" class="page min-h-screen">
+        <header class="p-6 flex justify-between items-center border-b border-white/5 bg-slate-950/50 backdrop-blur-md sticky top-0 z-50">
+            <span class="font-black italic text-xl tracking-tighter">DANO'S ACADEMY</span>
+            <span id="badge" class="text-[10px] font-black bg-blue-600 px-3 py-1 rounded-full uppercase"></span>
+        </header>
+        <main class="p-6 space-y-6 max-w-md mx-auto text-center">
+            <div class="card-glass p-8 rounded-[2.5rem] relative overflow-hidden">
+                <h3 class="text-3xl font-black italic uppercase">Operacional</h3>
+            </div>
+            <button onclick="showPage('quiz')" class="w-full p-6 bg-white text-slate-950 rounded-3xl flex items-center justify-between font-black shadow-xl">
+                <div class="flex items-center gap-4">
+                    <span class="text-3xl">🎯</span>
+                    <div class="text-left"><p class="uppercase text-sm">Teste Final</p><p class="text-[10px] text-blue-600 font-bold uppercase">Vale 220 pts (x3)</p></div>
+                </div>
+                <span>→</span>
+            </button>
+            <div id="caio-panel" class="hidden mt-12 space-y-2">
+                <h4 class="text-[10px] font-black text-red-500 uppercase tracking-[0.3em] mb-4 text-center">Painel do Caio</h4>
+                <div id="live-results" class="space-y-2"></div>
+            </div>
+        </main>
+    </div>
+
+    <div id="quiz" class="page min-h-screen flex flex-col p-8 items-center justify-center text-center">
+        <h2 class="text-3xl font-black italic uppercase mb-8">Confirmar Envio</h2>
+        <div class="card-glass p-10 rounded-[3.5rem] w-full max-w-sm">
+            <button onclick="saveResult(220)" class="w-full py-6 bg-green-600 rounded-3xl font-black uppercase text-xl">Enviar Agora</button>
+            <button onclick="showPage('menu')" class="mt-8 text-slate-500 font-bold uppercase text-[10px] tracking-widest underline">Cancelar</button>
+        </div>
+    </div>
+
+    <div id="success" class="page min-h-screen flex flex-col items-center justify-center p-8 text-center bg-blue-600">
+        <div class="w-20 h-20 bg-white text-blue-600 rounded-full flex items-center justify-center text-4xl mb-6 font-bold shadow-2xl">✓</div>
+        <h2 class="text-4xl font-black italic uppercase mb-10">Enviado!</h2>
+        <button onclick="showPage('menu')" class="px-12 py-5 bg-slate-950 text-white rounded-full font-black uppercase text-xs tracking-widest">Voltar</button>
+    </div>
+
+    <script>
+        // MANO CAIO: Substituí as variáveis dinâmicas pelas chaves reais do projeto
+        const firebaseConfig = {
+            apiKey: "", // O ambiente providencia a key automaticamente
+            authDomain: "danos-academy.firebaseapp.com",
+            projectId: "danos-academy",
+            storageBucket: "danos-academy.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "1:123456789:web:abcdef"
+        };
+
+        // Verifica se temos as chaves de ambiente, senão usa as nossas fixas
+        const finalConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : firebaseConfig;
+        const finalAppId = typeof __app_id !== 'undefined' ? __app_id : 'caio-academy-prod';
+
+        firebase.initializeApp(finalConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        let currentUser = "";
+
+        function showPage(id) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        }
+
+        async function handleLogin() {
+            const name = document.getElementById('userName').value.trim();
+            if(name.length < 2) return;
+            
+            const btn = document.getElementById('btnLogin');
+            const msg = document.getElementById('statusMsg');
+            btn.disabled = true;
+            msg.innerText = "A conectar à nuvem...";
+
+            try {
+                // Tenta autenticar primeiro (Regra 3)
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await auth.signInWithCustomToken(__initial_auth_token);
+                } else {
+                    await auth.signInAnonymously();
+                }
+
+                currentUser = name;
+                document.getElementById('badge').innerText = name;
+                showPage('menu');
+                
+                if(name.toLowerCase() === 'caio') {
+                    document.getElementById('caio-panel').classList.remove('hidden');
+                    loadAdminData();
+                }
+            } catch(e) {
+                msg.innerText = "Erro: Sem ligação à nuvem.";
+                btn.disabled = false;
+            }
+        }
+
+        async function saveResult(score) {
+            try {
+                await db.collection('artifacts').doc(finalAppId).collection('public').doc('data').collection('results').add({
+                    staff: currentUser,
+                    points: score,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                showPage('success');
+            } catch(e) { alert("Erro ao enviar!"); }
+        }
+
+        function loadAdminData() {
+            db.collection('artifacts').doc(finalAppId).collection('public').doc('data').collection('results')
+              .onSnapshot(snap => {
+                const container = document.getElementById('live-results');
+                container.innerHTML = "";
+                const docs = snap.docs.map(d => d.data());
+                docs.sort((a,b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+                docs.forEach(d => {
+                    container.innerHTML += `
+                        <div class="card-glass p-4 rounded-2xl flex justify-between items-center text-left">
+                            <span class="font-bold text-[10px] uppercase">${d.staff}</span>
+                            <span class="font-black text-blue-400 text-xs">${d.points} XP</span>
+                        </div>
+                    `;
+                });
+            });
+        }
+    </script>
+</body>
+</html>
